@@ -1,0 +1,77 @@
+version: '3.7'
+configs:
+  prometheus:
+    file: ./prometheus.yml
+volumes:
+  prometheus:
+    driver: rbd
+    driver_opts:
+      size: 1024
+      mkfsOptions: -Eroot_owner=65534:65534
+  grafana:
+    driver: rbd
+    driver_opts:
+      size: 128
+      mkfsOptions: -Eroot_owner=472:472
+
+services:
+  grafana:
+    image: grafana/grafana:latest
+    ports:
+      - "3000:3000"
+    volumes:
+      - grafana:/var/lib/grafana
+    
+  prometheus:
+    image: prom/prometheus:latest
+    configs:
+      - source: prometheus
+        target: /etc/prometheus/prometheus.yml
+    ports:
+      - "9090:9090"
+    volumes:
+      - prometheus:/prometheus
+    extra_hosts:
+      docker01: 192.168.1.21
+      docker02: 192.168.1.22
+      docker03: 192.168.1.23
+
+  node-exporter:
+    image: prom/node-exporter:latest
+    hostname: "{{.Service.Name}}-{{.Node.Hostname}}"
+    ports:
+      - target: 9100
+        published: 9100
+        protocol: tcp
+        mode: host
+    command:
+      - '--path.procfs=/host/proc'
+      - '--path.sysfs=/host/sys'
+      - '--path.rootfs=/host'
+      - '--collector.filesystem.ignored-mount-points="^(/rootfs|/host|)/(sys|proc|dev|host|etc)($$|/)"'
+      - '--collector.filesystem.ignored-fs-types="^(sys|proc|auto|cgroup|devpts|ns|au|fuse\.lxc|mqueue)(fs|)$$"'
+    volumes:
+      - /proc:/host/proc:ro
+      - /sys:/host/sys:ro
+      - /:/rootfs:ro
+    deploy:
+      mode: global
+
+  cadvisor:
+    image: google/cadvisor
+    command: -logtostderr -docker_only
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - /:/rootfs:ro
+      - /var/run:/var/run
+      - /sys:/sys:ro
+      - /var/lib/docker/:/var/lib/docker:ro
+    deploy:
+      mode: global
+    ports:
+      - target: 8080
+        published: 9101
+        protocol: tcp
+        mode: host
+
+
